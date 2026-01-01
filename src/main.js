@@ -3,8 +3,15 @@ import MainScene from "./MainScene.js";
 
 const config = {
   type: Phaser.AUTO,
-  width: 800,
-  height: 600,
+  width: window.innerWidth,
+  height: window.innerHeight,
+  scale: {
+        mode: Phaser.Scale.RESIZE, // Viktigt för att synka musen
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: '100%',
+        height: '100%'
+    },
+  pixelArt: true,
   parent: "game",
   backgroundColor: "#000000",
   scene: [MainScene],
@@ -16,4 +23,9 @@ const config = {
   },
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+// Detta lyssnar på om du ändrar storlek på webbläsarfönstret manuellt
+window.addEventListener('resize', () => {
+    game.scale.resize(window.innerWidth, window.innerHeight);
+});

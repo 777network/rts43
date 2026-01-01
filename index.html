@@ -7,21 +7,23 @@
     <style>
         body {
             margin: 0;
+            padding: 0;
             background-color: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            overflow: hidden; /* Förhindrar att sidan scrollar */
         }
 
         canvas {
-            box-shadow: 0 0 20px rgba(0,295,0,0.2);
+            display: block; /* Förhindrar små marginaler i botten */
+        }
+
+        #game {
+            width: 100vw;
+            height: 100vh;
         }
     </style>
 </head>
 <body>
     <div id="game"></div>
-
     <script type="module" src="/src/main.js"></script>
 </body>
 </html>
