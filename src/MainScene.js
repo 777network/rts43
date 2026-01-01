@@ -8,7 +8,6 @@ export default class MainScene extends Phaser.Scene {
   }
 
   preload() {
-    // Grundläggande grafik
     this.load.image("grass", "assets/tiles/grass.png");
     this.load.image("forest", "assets/tiles/forest.png");
     this.load.image("gold", "assets/tiles/gold.png");
@@ -16,14 +15,8 @@ export default class MainScene extends Phaser.Scene {
     this.load.image("food", "assets/tiles/food.png");
     this.load.image("towncenter", "assets/tiles/towncenter.png");
 
-    // Dina 8 exakta riktningar
-    const dirs = [
-      "down", "up", "left", "right", 
-      "down_right", "down_left", "up_right", "up_left"
-    ];
-    
-    dirs.forEach((dir) => {
-      // Laddar in 6 frames (0-5) med storlek 45x65 per ruta
+    const dirs = ["down", "up", "left", "right", "down_right", "down_left", "up_right", "up_left"];
+    dirs.forEach(dir => {
       this.load.spritesheet(`villager_idle_${dir}`, `assets/tiles/villager_idle_${dir}.png`, { frameWidth: 45, frameHeight: 65 });
       this.load.spritesheet(`villager_walk_${dir}`, `assets/tiles/villager_walk_${dir}.png`, { frameWidth: 45, frameHeight: 65 });
     });
@@ -31,72 +24,82 @@ export default class MainScene extends Phaser.Scene {
 
   create() {
     const tileSize = 32;
-    const mapWidth = 200;
-    const mapHeight = 170;
-
-    // Skapa karta
-    this.tileMap = new TileMap(this, mapWidth, mapHeight, tileSize);
+    this.tileMap = new TileMap(this, 100, 100, tileSize);
     
-    const tcX = 10 * tileSize;
-    const tcY = Math.floor(mapHeight / 2) * tileSize;
+    const tcTileX = 15;
+    const tcTileY = 15;
+    const tcX = tcTileX * tileSize;
+    const tcY = tcTileY * tileSize;
 
-    this.tileMap.protectArea(10, Math.floor(mapHeight / 2), 3);
-    this.tileMap.placeStartingResources(10, Math.floor(mapHeight / 2));
+    this.tileMap.protectArea(tcTileX, tcTileY, 3);
+    this.tileMap.placeStartingResources(tcTileX, tcTileY);
     this.tileMap.randomizeGlobalResources();
-    this.tileMap.placeSingleTrees(150);
     this.tileMap.renderMap();
 
-    // Skapa alla animationer
     this.createVillagerAnimations();
 
+    // Skapa byggnaden
     this.townCenter = new Building(this, tcX, tcY, "towncenter");
-    
-    // Skapa start-enheter
+
+    // BLOCKERA TOWN CENTER: Gör så att pathfinding ser byggnaden som ett hinder
+    for (let x = -1; x <= 1; x++) {
+      for (let y = -1; y <= 0; y++) {
+        const ty = tcTileY + y;
+        const tx = tcTileX + x;
+        if (this.tileMap.map[ty] && this.tileMap.map[ty][tx]) {
+          this.tileMap.map[ty][tx].type = "building";
+        }
+      }
+    }
+
     this.units = [
-      new Unit(this, tcX + 80, tcY + 20, "villager_idle_down"),
-      new Unit(this, tcX + 80, tcY + 80, "villager_idle_down")
+      new Unit(this, tcX + 80, tcY + 60, "villager_idle_down"),
+      new Unit(this, tcX + 80, tcY + 100, "villager_idle_down")
     ];
 
     this.selectedUnits = [];
     this.isDragging = false;
     this.selectionGraphics = this.add.graphics();
+    this.destMarker = this.add.graphics();
+    this.destMarker.setVisible(false);
 
     this.setupMouseInput();
-    
-    // Kamera-inställningar
-    this.cameras.main.setBounds(0, 0, mapWidth * tileSize, mapHeight * tileSize);
     this.cameras.main.centerOn(tcX, tcY);
     this.keys = this.input.keyboard.addKeys('W,A,S,D');
-
-    this.add.text(10, 10, "MARKERA: Vänsterklick | GÅ: Högerklick", { 
-        font: "16px Arial", fill: "#ffffff", backgroundColor: "#000000" 
-    }).setScrollFactor(0).setDepth(1000);
   }
 
   createVillagerAnimations() {
     const dirs = ["down", "up", "left", "right", "down_right", "down_left", "up_right", "up_left"];
-    dirs.forEach((dir) => {
-      // Idle: 6 rutor (0 till 5)
-      this.anims.create({
-        key: `villager_idle_${dir}`,
-        frames: this.anims.generateFrameNumbers(`villager_idle_${dir}`, { start: 0, end: 5 }),
-        frameRate: 6,
-        repeat: -1
-      });
+    dirs.forEach(dir => {
+      if (!this.anims.exists(`villager_idle_${dir}`)) {
+        this.anims.create({ key: `villager_idle_${dir}`, frames: this.anims.generateFrameNumbers(`villager_idle_${dir}`, { start: 0, end: 5 }), frameRate: 6, repeat: -1 });
+      }
+      if (!this.anims.exists(`villager_walk_${dir}`)) {
+        this.anims.create({ key: `villager_walk_${dir}`, frames: this.anims.generateFrameNumbers(`villager_walk_${dir}`, { start: 0, end: 5 }), frameRate: 10, repeat: -1 });
+      }
+    });
+  }
 
-      // Walk: 6 rutor (0 till 5)
-      this.anims.create({
-        key: `villager_walk_${dir}`,
-        frames: this.anims.generateFrameNumbers(`villager_walk_${dir}`, { start: 0, end: 5 }),
-        frameRate: 10,
-        repeat: -1
-      });
+  showDestinationMarker(x, y) {
+    this.destMarker.clear();
+    this.destMarker.lineStyle(3, 0xff0000);
+    this.destMarker.lineBetween(-10, -10, 10, 10);
+    this.destMarker.lineBetween(10, -10, -10, 10);
+    this.destMarker.setPosition(x, y).setVisible(true).setAlpha(1).setDepth(2000);
+    
+    if (this.destTween) this.destTween.stop();
+    this.destTween = this.tweens.add({
+      targets: this.destMarker,
+      alpha: 0,
+      duration: 500,
+      yoyo: true,
+      repeat: 3,
+      onComplete: () => this.destMarker.setVisible(false)
     });
   }
 
   setupMouseInput() {
     this.input.mouse.disableContextMenu();
-
     this.input.on("pointerdown", (p) => {
       if (p.leftButtonDown()) {
         this.isDragging = true;
@@ -106,12 +109,11 @@ export default class MainScene extends Phaser.Scene {
 
     this.input.on("pointermove", (p) => {
       if (this.isDragging) {
-        this.selectionGraphics.clear().lineStyle(2, 0x00ff00, 1);
-        const x = Math.min(this.dragStart.x, p.worldX);
-        const y = Math.min(this.dragStart.y, p.worldY);
-        const w = Math.abs(p.worldX - this.dragStart.x);
-        const h = Math.abs(p.worldY - this.dragStart.y);
-        this.selectionGraphics.strokeRect(x, y, w, h);
+        this.selectionGraphics.clear().lineStyle(2, 0x00ff00);
+        this.selectionGraphics.strokeRect(
+          Math.min(this.dragStart.x, p.worldX), Math.min(this.dragStart.y, p.worldY),
+          Math.abs(p.worldX - this.dragStart.x), Math.abs(p.worldY - this.dragStart.y)
+        );
       }
     });
 
@@ -119,31 +121,29 @@ export default class MainScene extends Phaser.Scene {
       if (p.leftButtonReleased()) {
         this.isDragging = false;
         this.selectionGraphics.clear();
-        
+        if (!this.dragStart) return;
         const dist = Phaser.Math.Distance.Between(this.dragStart.x, this.dragStart.y, p.worldX, p.worldY);
-        if (dist < 10) {
-          this.handleSingleSelection(p.worldX, p.worldY);
-        } else {
-          this.handleBoxSelection(new Phaser.Geom.Rectangle(
-            Math.min(this.dragStart.x, p.worldX), Math.min(this.dragStart.y, p.worldY),
-            Math.abs(p.worldX - this.dragStart.x), Math.abs(p.worldY - this.dragStart.y)
-          ));
-        }
+        if (dist < 10) this.handleSingleSelection(p.worldX, p.worldY);
+        else this.handleBoxSelection(new Phaser.Geom.Rectangle(Math.min(this.dragStart.x, p.worldX), Math.min(this.dragStart.y, p.worldY), Math.abs(p.worldX - this.dragStart.x), Math.abs(p.worldY - this.dragStart.y)));
       } else if (p.rightButtonReleased()) {
-        // Skicka valda gubbar till målpunkten
-        this.selectedUnits.forEach((u, i) => {
-          const offsetX = (i % 3) * 30;
-          const offsetY = Math.floor(i / 3) * 30;
-          u.moveTo(p.worldX + offsetX, p.worldY + offsetY);
-        });
+        if (this.selectedUnits.length > 0) {
+          this.showDestinationMarker(p.worldX, p.worldY);
+          this.selectedUnits.forEach((u, i) => {
+            const spacing = 32;
+            const tx = p.worldX + (i % 3) * spacing;
+            const ty = p.worldY + Math.floor(i / 3) * spacing;
+            u.findPathTo(tx, ty, this.tileMap);
+          });
+        }
       }
     });
   }
 
   handleSingleSelection(x, y) {
-    this.clearSelection();
+    this.units.forEach(u => u.setSelected(false));
+    this.selectedUnits = [];
     for (const u of this.units) {
-      if (Phaser.Math.Distance.Between(x, y, u.sprite.x, u.sprite.y) < 32) {
+      if (Phaser.Math.Distance.Between(x, y, u.sprite.x, u.sprite.y) < 30) {
         u.setSelected(true);
         this.selectedUnits.push(u);
         break;
@@ -152,7 +152,8 @@ export default class MainScene extends Phaser.Scene {
   }
 
   handleBoxSelection(rect) {
-    this.clearSelection();
+    this.units.forEach(u => u.setSelected(false));
+    this.selectedUnits = [];
     this.units.forEach(u => {
       if (rect.contains(u.sprite.x, u.sprite.y)) {
         u.setSelected(true);
@@ -161,18 +162,12 @@ export default class MainScene extends Phaser.Scene {
     });
   }
 
-  clearSelection() {
-    this.selectedUnits.forEach(u => u.setSelected(false));
-    this.selectedUnits = [];
-  }
-
-  update(time, delta) {
-    const camSpeed = 12;
+  update(t, delta) {
+    const camSpeed = 10;
     if (this.keys.W.isDown) this.cameras.main.scrollY -= camSpeed;
     if (this.keys.S.isDown) this.cameras.main.scrollY += camSpeed;
     if (this.keys.A.isDown) this.cameras.main.scrollX -= camSpeed;
     if (this.keys.D.isDown) this.cameras.main.scrollX += camSpeed;
-
-    this.units.forEach(u => u.update(delta, this.tileMap));
+    this.units.forEach(u => u.update(delta, this.tileMap, this.units));
   }
 }

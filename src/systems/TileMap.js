@@ -1,13 +1,3 @@
-const TILE_TYPES = {
-  GRASS: "grass",
-  FOREST: "forest",
-  GOLD: "gold",
-  STONE: "stone",
-  FOOD: "food",
-};
-
-export { TILE_TYPES };
-
 export default class TileMap {
   constructor(scene, width, height, tileSize) {
     this.scene = scene;
@@ -15,133 +5,113 @@ export default class TileMap {
     this.height = height;
     this.tileSize = tileSize;
     this.map = [];
-    this.generateMap();
-  }
 
-  generateMap() {
-    this.map = [];
-    for (let y = 0; y < this.height; y++) {
-      const row = [];
-      for (let x = 0; x < this.width; x++) {
-        row.push({ x, y, type: TILE_TYPES.GRASS, protected: false });
-      }
-      this.map.push(row);
-    }
-  }
-
-  placeSingleTrees(count) {
-    for (let i = 0; i < count; i++) {
-      const x = Math.floor(Math.random() * this.width);
-      const y = Math.floor(Math.random() * this.height);
-      if (this.map[y] && this.map[y][x] && this.map[y][x].type === TILE_TYPES.GRASS && !this.map[y][x].protected) {
-        this.map[y][x].type = TILE_TYPES.FOREST;
+    // 1. Initiera kartan med gräs
+    for (let y = 0; y < height; y++) {
+      this.map[y] = [];
+      for (let x = 0; x < width; x++) {
+        this.map[y][x] = { type: "grass", protected: false };
       }
     }
   }
 
-  placeStartingResources(tcTileX, tcTileY) {
-    const startResources = [
-      { type: TILE_TYPES.STONE, size: 4 },
-      { type: TILE_TYPES.GOLD, size: 4 },
-      { type: TILE_TYPES.FOOD, size: 6 },
-      { type: TILE_TYPES.FOREST, size: 20 },
-      { type: TILE_TYPES.FOREST, size: 20 },
-    ];
+  // Förhindrar att resurser spawnar mitt i Town Center
+  protectArea(startX, startY, range) {
+    for (let y = startY - range; y <= startY + range; y++) {
+      for (let x = startX - range; x <= startX + range; x++) {
+        if (this.isValid(x, y)) {
+          this.map[y][x].type = "grass";
+          this.map[y][x].protected = true;
+        }
+      }
+    }
+  }
 
-    startResources.forEach((res, index) => {
-      const angle = (index / startResources.length) * Math.PI * 2 + Math.random();
-      const x = Math.round(tcTileX + Math.cos(angle) * 6);
-      const y = Math.round(tcTileY + Math.sin(angle) * 6);
-      this.fillCluster(x, y, res.type, res.size);
+  // Skapar de viktiga resurserna precis vid start
+  placeStartingResources(tcX, tcY) {
+    const resources = ["forest", "gold", "stone", "food"];
+    resources.forEach((res, i) => {
+      const angle = (i / resources.length) * Math.PI * 2;
+      const dist = 5;
+      const x = Math.floor(tcX + Math.cos(angle) * dist);
+      const y = Math.floor(tcY + Math.sin(angle) * dist);
+      this.generateCluster(x, y, res, 4); // Lite större start-kluster
     });
   }
 
+  // NY: Denna metod skapar stora skogar och gruvor över hela banan
   randomizeGlobalResources() {
-    this.placeGlobalClusters(TILE_TYPES.GOLD, 15, 5);
-    this.placeGlobalClusters(TILE_TYPES.STONE, 12, 4);
-    this.placeGlobalClusters(TILE_TYPES.FOOD, 20, 8);
-    this.placeGlobalClusters(TILE_TYPES.FOREST, 40, 65);
-  }
+    // Skapa ca 40 skogar (forest)
+    for (let i = 0; i < 40; i++) {
+      const x = Phaser.Math.Between(0, this.width - 1);
+      const y = Phaser.Math.Between(0, this.height - 1);
+      this.generateCluster(x, y, "forest", Phaser.Math.Between(5, 15));
+    }
 
-  placeGlobalClusters(type, count, clusterSize) {
-    let placed = 0;
-    for (let i = 0; i < 500 && placed < count; i++) {
-      const x = Math.floor(Math.random() * this.width);
-      const y = Math.floor(Math.random() * this.height);
-      if (this.isAreaClear(x, y, 8)) {
-        this.fillCluster(x, y, type, clusterSize);
-        placed++;
-      }
+    // Skapa ca 15 guld-kluster
+    for (let i = 0; i < 15; i++) {
+      const x = Phaser.Math.Between(0, this.width - 1);
+      const y = Phaser.Math.Between(0, this.height - 1);
+      this.generateCluster(x, y, "gold", Phaser.Math.Between(3, 6));
+    }
+
+    // Skapa ca 15 sten-kluster
+    for (let i = 0; i < 15; i++) {
+      const x = Phaser.Math.Between(0, this.width - 1);
+      const y = Phaser.Math.Between(0, this.height - 1);
+      this.generateCluster(x, y, "stone", Phaser.Math.Between(3, 6));
     }
   }
 
-  fillCluster(startX, startY, type, size) {
-    let queue = [{ x: startX, y: startY }];
-    let placed = 0;
-    let visited = new Set();
-
-    while (placed < size && queue.length > 0) {
-      let { x, y } = queue.shift();
-      let key = `${x},${y}`;
-      if (visited.has(key)) continue;
-      visited.add(key);
-
-      if (this.map[y] && this.map[y][x] && this.map[y][x].type === TILE_TYPES.GRASS && !this.map[y][x].protected) {
+  // Hjälpmetod för att bygga ihop kluster av resurser
+  generateCluster(startX, startY, type, size) {
+    for (let i = 0; i < size; i++) {
+      const offX = Phaser.Math.Between(-2, 2);
+      const offY = Phaser.Math.Between(-2, 2);
+      const x = startX + offX;
+      const y = startY + offY;
+      
+      if (this.isValid(x, y) && !this.map[y][x].protected) {
         this.map[y][x].type = type;
-        placed++;
-        queue.push({x: x+1, y}, {x: x-1, y}, {x, y: y+1}, {x, y: y-1});
-      }
-    }
-  }
-
-  isAreaClear(targetX, targetY, radius) {
-    for (let y = targetY - radius; y <= targetY + radius; y++) {
-      for (let x = targetX - radius; x <= targetX + radius; x++) {
-        if (!this.map[y] || !this.map[y][x] || this.map[y][x].type !== TILE_TYPES.GRASS || this.map[y][x].protected) return false;
-      }
-    }
-    return true;
-  }
-
-  protectArea(tileX, tileY, radius) {
-    for (let y = tileY - radius; y <= tileY + radius; y++) {
-      for (let x = tileX - radius; x <= tileX + radius; x++) {
-        if (this.map[y] && this.map[y][x]) {
-          this.map[y][x].protected = true;
-          this.map[y][x].type = TILE_TYPES.GRASS;
-        }
       }
     }
   }
 
   renderMap() {
-    this.map.forEach((row, y) => {
-      row.forEach((tile, x) => {
-        this.scene.add.image(x * this.tileSize, y * this.tileSize, "grass").setOrigin(0).setDepth(-1);
-        if (tile.type !== TILE_TYPES.GRASS) {
-          const sprite = this.scene.add.image(x * this.tileSize, y * this.tileSize, tile.type);
-          if (tile.type === TILE_TYPES.FOREST) {
-            sprite.setOrigin(0.5, 0.9).setPosition(x * this.tileSize + this.tileSize/2, y * this.tileSize + this.tileSize);
-          } else {
-            sprite.setOrigin(0);
-          }
-          sprite.setDepth(sprite.y);
-        }
-      });
-    });
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const tile = this.map[y][x];
+        const worldX = x * this.tileSize + this.tileSize / 2;
+        const worldY = y * this.tileSize + this.tileSize / 2;
+        
+        const img = this.scene.add.image(worldX, worldY, tile.type);
+        img.setOrigin(0.5);
+        // Gräs i botten, allt annat har djup baserat på Y för 2.5D-effekt
+        img.setDepth(tile.type === "grass" ? -1 : worldY);
+      }
+    }
+  }
+
+  isValid(x, y) {
+    return x >= 0 && x < this.width && y >= 0 && y < this.height;
   }
 
   worldToTile(x, y) {
-    return { tx: Math.floor(x / this.tileSize), ty: Math.floor(y / this.tileSize) };
-  }
-
-  isWalkableWorld(x, y) {
-    const { tx, ty } = this.worldToTile(x, y);
-    return this.isWalkableTile(tx, ty);
+    return { 
+      tx: Math.floor(x / this.tileSize), 
+      ty: Math.floor(y / this.tileSize) 
+    };
   }
 
   isWalkableTile(tx, ty) {
-    if (ty < 0 || ty >= this.height || tx < 0 || tx >= this.width) return false;
-    return this.map[ty][tx].type === TILE_TYPES.GRASS;
+    if (!this.isValid(tx, ty)) return false;
+    const tile = this.map[ty][tx];
+    // Pathfinding: Endast grass är öppet för att gå på
+    return tile.type === "grass";
+  }
+
+  isWalkableWorld(worldX, worldY) {
+    const tile = this.worldToTile(worldX, worldY);
+    return this.isWalkableTile(tile.tx, tile.ty);
   }
 }
