@@ -18,24 +18,6 @@ export default class TileMap {
     this.generateMap();
   }
 
-  placeSingleTrees(count) {
-    let placed = 0;
-    for (let i = 0; i < count; i++) {
-      const x = Math.floor(Math.random() * this.width);
-      const y = Math.floor(Math.random() * this.height);
-
-      if (
-        this.map[y] &&
-        this.map[y][x] &&
-        this.map[y][x].type === TILE_TYPES.GRASS &&
-        !this.map[y][x].protected
-      ) {
-        this.map[y][x].type = TILE_TYPES.FOREST;
-        placed++;
-      }
-    }
-  }
-
   generateMap() {
     this.map = [];
     for (let y = 0; y < this.height; y++) {
@@ -44,6 +26,16 @@ export default class TileMap {
         row.push({ x, y, type: TILE_TYPES.GRASS, protected: false });
       }
       this.map.push(row);
+    }
+  }
+
+  placeSingleTrees(count) {
+    for (let i = 0; i < count; i++) {
+      const x = Math.floor(Math.random() * this.width);
+      const y = Math.floor(Math.random() * this.height);
+      if (this.map[y] && this.map[y][x] && this.map[y][x].type === TILE_TYPES.GRASS && !this.map[y][x].protected) {
+        this.map[y][x].type = TILE_TYPES.FOREST;
+      }
     }
   }
 
@@ -58,9 +50,8 @@ export default class TileMap {
 
     startResources.forEach((res, index) => {
       const angle = (index / startResources.length) * Math.PI * 2 + Math.random();
-      const dist = 6;
-      const x = Math.round(tcTileX + Math.cos(angle) * dist);
-      const y = Math.round(tcTileY + Math.sin(angle) * dist);
+      const x = Math.round(tcTileX + Math.cos(angle) * 6);
+      const y = Math.round(tcTileY + Math.sin(angle) * 6);
       this.fillCluster(x, y, res.type, res.size);
     });
   }
@@ -90,29 +81,15 @@ export default class TileMap {
     let visited = new Set();
 
     while (placed < size && queue.length > 0) {
-      let index = Math.floor(Math.random() * Math.min(queue.length, 3));
-      let { x, y } = queue.splice(index, 1)[0];
+      let { x, y } = queue.shift();
       let key = `${x},${y}`;
       if (visited.has(key)) continue;
       visited.add(key);
 
-      if (
-        this.map[y] &&
-        this.map[y][x] &&
-        this.map[y][x].type === TILE_TYPES.GRASS &&
-        !this.map[y][x].protected
-      ) {
+      if (this.map[y] && this.map[y][x] && this.map[y][x].type === TILE_TYPES.GRASS && !this.map[y][x].protected) {
         this.map[y][x].type = type;
         placed++;
-
-        let neighbors = [
-          { x: x + 1, y: y },
-          { x: x - 1, y: y },
-          { x: x, y: y + 1 },
-          { x: x, y: y - 1 },
-        ];
-        neighbors.sort(() => Math.random() - 0.5);
-        queue.push(...neighbors);
+        queue.push({x: x+1, y}, {x: x-1, y}, {x, y: y+1}, {x, y: y-1});
       }
     }
   }
@@ -120,14 +97,7 @@ export default class TileMap {
   isAreaClear(targetX, targetY, radius) {
     for (let y = targetY - radius; y <= targetY + radius; y++) {
       for (let x = targetX - radius; x <= targetX + radius; x++) {
-        if (
-          !this.map[y] ||
-          !this.map[y][x] ||
-          this.map[y][x].type !== TILE_TYPES.GRASS ||
-          this.map[y][x].protected
-        ) {
-          return false;
-        }
+        if (!this.map[y] || !this.map[y][x] || this.map[y][x].type !== TILE_TYPES.GRASS || this.map[y][x].protected) return false;
       }
     }
     return true;
@@ -147,38 +117,22 @@ export default class TileMap {
   renderMap() {
     this.map.forEach((row, y) => {
       row.forEach((tile, x) => {
-        const grass = this.scene.add
-          .image(x * this.tileSize, y * this.tileSize, "grass")
-          .setOrigin(0)
-          .setDepth(-1);
-
+        this.scene.add.image(x * this.tileSize, y * this.tileSize, "grass").setOrigin(0).setDepth(-1);
         if (tile.type !== TILE_TYPES.GRASS) {
-          const sprite = this.scene.add.image(
-            x * this.tileSize,
-            y * this.tileSize,
-            tile.type
-          );
-
+          const sprite = this.scene.add.image(x * this.tileSize, y * this.tileSize, tile.type);
           if (tile.type === TILE_TYPES.FOREST) {
-            sprite.setOrigin(0.5, 0.9);
-            sprite.x += this.tileSize / 2;
-            sprite.y += this.tileSize;
+            sprite.setOrigin(0.5, 0.9).setPosition(x * this.tileSize + this.tileSize/2, y * this.tileSize + this.tileSize);
           } else {
             sprite.setOrigin(0);
           }
-
           sprite.setDepth(sprite.y);
         }
       });
     });
   }
 
-  // ====== HJÄLPFUNKTIONER FÖR UNITS ======
-
   worldToTile(x, y) {
-    const tx = Math.floor(x / this.tileSize);
-    const ty = Math.floor(y / this.tileSize);
-    return { tx, ty };
+    return { tx: Math.floor(x / this.tileSize), ty: Math.floor(y / this.tileSize) };
   }
 
   isWalkableWorld(x, y) {
@@ -188,8 +142,6 @@ export default class TileMap {
 
   isWalkableTile(tx, ty) {
     if (ty < 0 || ty >= this.height || tx < 0 || tx >= this.width) return false;
-    const tile = this.map[ty][tx];
-    // Bara GRASS får betraktas som gångbart
-    return tile.type === TILE_TYPES.GRASS;
+    return this.map[ty][tx].type === TILE_TYPES.GRASS;
   }
 }
